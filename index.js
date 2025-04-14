@@ -1,13 +1,8 @@
-// server.js
-const express = require("express");
-const bodyParser = require("body-parser");
+// api/index.js
+
 const { Expo } = require("expo-server-sdk");
 
-const app = express();
-const expo = new Expo(); // If needed, you can pass accessToken here
-const PORT = process.env.PORT || 3000;
-
-app.use(bodyParser.json());
+let expo = new Expo();
 
 const sendNotification = async (pushToken, title, body) => {
   if (!Expo.isExpoPushToken(pushToken)) {
@@ -25,28 +20,42 @@ const sendNotification = async (pushToken, title, body) => {
 
   try {
     let ticketChunk = await expo.sendPushNotificationsAsync([message]);
-    console.log("✅ Ticket:", ticketChunk);
+    return ticketChunk;
   } catch (error) {
     console.error("❌ Failed to send notification:", error);
+    throw error;
   }
 };
 
-app.post("/login", async (req, res) => {
-  const { token } = req.body;
-  if (!token) return res.status(400).json({ error: "Token missing" });
+module.exports = async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).send("Only POST allowed");
+    return;
+  }
 
-  await sendNotification(token, "Login Successful", "Welcome back!");
-  res.json({ message: "Login notification sent" });
-});
+  const { token, type } = req.body;
+  if (!token || !type) {
+    res.status(400).json({ error: "Token or type missing" });
+    return;
+  }
 
-app.post("/register", async (req, res) => {
-  const { token } = req.body;
-  if (!token) return res.status(400).json({ error: "Token missing" });
+  const titles = {
+    login: "Login Successful",
+    register: "Registration Complete",
+  };
+  const bodies = {
+    login: "Welcome back!",
+    register: "You're all set!",
+  };
 
-  await sendNotification(token, "Registration Complete", "You’re all set!");
-  res.json({ message: "Registration notification sent" });
-});
+  if (!titles[type]) {
+    return res.status(400).json({ error: "Unknown type" });
+  }
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
-});
+  try {
+    const ticket = await sendNotification(token, titles[type], bodies[type]);
+    res.status(200).json({ success: true, ticket });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+};
